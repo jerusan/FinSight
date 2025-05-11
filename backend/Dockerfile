@@ -8,16 +8,9 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y build-essential
 
 RUN apt-get update && apt-get install -y \
-    poppler-utils \
-    tesseract-ocr \
-    python3-pip
-
-RUN apt-get update && apt-get install -y \
     libmagic1 \
     libmagic-dev \
     && apt-get clean
-
-RUN pip install pdf2image pytesseract pillow
 
 # Install dependencies
 COPY requirements.txt .

@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { EditableCell } from './EditableCell'
+import { formatCurrency } from '../utils/formatters'
 interface Transaction {
   id: number
   date: string
@@ -65,13 +66,6 @@ export const StatementTable: React.FC<StatementTableProps> = ({
     )
     setTableData(newData)
     onDataUpdate(newData)
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: currency,
-    }).format(amount)
   }
 
   return (
@@ -200,7 +194,7 @@ export const StatementTable: React.FC<StatementTableProps> = ({
                     <div
                       className={`${transaction.credit < 0 ? 'text-red-600' : 'text-green-600'} ${transaction.needsReview ? 'font-medium' : ''}`}
                     >
-                      {formatCurrency(transaction.credit)}
+                      {formatCurrency(transaction.credit, currency)}
                     </div>
                   )}
                 </td>
@@ -225,7 +219,7 @@ export const StatementTable: React.FC<StatementTableProps> = ({
                     <div
                       className={`${transaction.debit < 0 ? 'text-red-600' : 'text-green-600'} ${transaction.needsReview ? 'font-medium' : ''}`}
                     >
-                      {formatCurrency(transaction.debit)}
+                      {formatCurrency(transaction.debit, currency)}
                     </div>
                   )}
                 </td>
@@ -246,7 +240,7 @@ export const StatementTable: React.FC<StatementTableProps> = ({
                     <div
                       className={`${transaction.balance < 0 ? 'text-red-600' : 'text-green-600'} ${transaction.needsReview ? 'font-medium' : ''}`}
                     >
-                      {formatCurrency(transaction.balance)}
+                      {formatCurrency(transaction.balance, currency)}
                     </div>
                   )}
                 </td>

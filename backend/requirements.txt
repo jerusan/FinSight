@@ -4,13 +4,8 @@ pandas==2.2.3
 pdfplumber==0.11.6
 openpyxl==3.1.5
 python-multipart==0.0.12
-pdf2image==1.17.0
-pytesseract==0.3.13
-PyPDF2==3.0.1
 openai==1.78.0
 asyncio
-pdfplumber==0.11.6
-pdf2image
 regex
 extract_thinker
 pypdf
