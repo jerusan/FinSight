@@ -4,7 +4,7 @@ import { FileUpload } from './components/FileUpload'
 import { StatementTable } from './components/StatementTable'
 import { PDFViewer } from './components/PDFViewer'
 import { AlertTriangleIcon, CheckIcon } from 'lucide-react'
-import Dashboard from './components/FinancialInsightDashboard/Dashboard'
+import Dashboard from './components/Dashboard/Dashboard'
 export default function App() {
   const [file, setFile] = useState<File | null>(null)
   const [isProcessing, setIsProcessing] = useState(false)

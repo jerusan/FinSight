@@ -40,10 +40,10 @@ export const IncomeAnalysis = ({
               <XAxis dataKey="name" tick={{
               fontSize: 12
             }} />
-              <YAxis tickFormatter={value => `$${value}`} tick={{
+              <YAxis tickFormatter={value => `${formatCurrency(Number(value), currency)}`} tick={{
               fontSize: 12
             }} />
-              <Tooltip formatter={value => [`$${value}`, 'Amount']} labelStyle={{
+              <Tooltip formatter={value => [`${formatCurrency(Number(value), currency)}`, 'Amount']} labelStyle={{
               color: '#111'
             }} contentStyle={{
               backgroundColor: 'white',
