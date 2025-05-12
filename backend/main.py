@@ -19,12 +19,15 @@ from openai import AsyncOpenAI
 # --- Config & Setup ---
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
-QA_ENGINE_ASSISTANT_ID = os.getenv("Q_AND_A_ASSISTANT_ID_2")
 DASHBOARD_ASSISTANT_ID = os.getenv("DASHBOARD_ASSISTANT_ID")
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 openAIClient = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+
+# FIX: This is a hack for MVP, should implement thread management to support multiple users and statements
+qa_engine_assistant_thread_id = None
+qa_engine_assistant_id = None
 
 # --- FastAPI App ---
 app = FastAPI()
@@ -36,9 +39,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# FIX: This is a hack for MVP, should implement thread management to support multiple users and statements
-qa_engine_assistant_thread_id = None
-
 # -- API Routes --
 @app.get("/", response_model=dict)
 async def root() -> dict:
@@ -49,11 +49,11 @@ async def finalize_statement(data: FinalizedStatementRequest) -> AnalysisResult:
     global qa_engine_assistant_thread_id
     print("Finalized statement:", data)
 
+    await create_q_and_a_assistant_thread(data)
+
     res = await generate_dashboard_with_assistant(data)
     print("Financial data", res)
-    result = AnalysisResult(**json.loads(res))
-    await start_conversation_with_statement(result)
-    return result
+    return AnalysisResult(**json.loads(res))
 
 @app.post("/upload-statement/", response_model=AnalysisResponse)
 async def upload_bank_statement(file: UploadFile = File(...)) -> Union[AnalysisResponse, JSONResponse]:
@@ -142,67 +142,59 @@ async def extract(file_path: str) -> "BankStatement":
 
 
 # -- Assistant Functions --
-
-# Bank QA Assistant starter conversation
-async def start_conversation_with_statement(data: AnalysisResult) -> str:
+async def create_q_and_a_assistant_thread(finalized_statement: FinalizedStatementRequest):
     global qa_engine_assistant_thread_id
-    thread = await openAIClient.beta.threads.create()
-    
-    # Add bank statement to the thread
-    await openAIClient.beta.threads.messages.create(
-        thread_id=thread.id,
-        role="user",
-        content=[
-        {
-            "type": "text",
-            "text": json.dumps({ "user_bank_statement": data.model_dump() })
-        }
-    ])
+    global qa_engine_assistant_id
 
-    # Start the assistant run
-    run = await openAIClient.beta.threads.runs.create(
-        thread_id=thread.id,
-        assistant_id=QA_ENGINE_ASSISTANT_ID
+    SYSTEM_PROMPT = f"""
+You are a financial assistant that analyzes structured personal bank statements using only the provided data.
+
+Do not respond unless the user asks a specific financial question. Do not say "I'm ready" or "How can I help?" or provide any output unless a question is asked.
+
+Data:
+{json.dumps(finalized_statement.model_dump())}
+
+Rules:
+- Answer only when the user asks a financial question.
+- Use only the data provided; do not make assumptions.
+- If data is unclear or missing, say so directly.
+- Never ask the user a question.
+- Never summarize unless explicitly asked.
+
+Do not generate any output until the user asks a question.
+"""
+
+    print("System prompt: ", SYSTEM_PROMPT)
+    assistant = await openAIClient.beta.assistants.create(
+    name="QA Chatbot Assistant",
+    instructions=SYSTEM_PROMPT,
+    tools=[],
+    model="gpt-4o-mini"
     )
 
-    # Poll for completion
-    while True:
-        status = await openAIClient.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
-        if status.status == "completed":
-            break
-        elif status.status in {"failed", "cancelled", "expired"}:
-            raise HTTPException(status_code=500, detail=f"Run failed: {status.status}")
-        await asyncio.sleep(1)
 
-    messages = await openAIClient.beta.threads.messages.list(thread_id=thread.id)
-    for message in reversed(messages.data):
-        if message.role == "assistant":
-            print("QA Assistant starter reply:", message.content[0].text.value)
-            message.content[0].text.value
+    thread = await openAIClient.beta.threads.create()
 
-    print("QA Thread ID:", thread.id)
     qa_engine_assistant_thread_id = thread.id
-    return thread.id
-
+    qa_engine_assistant_id = assistant.id
+    return 
 
 # Bank QA Assistant chat
 async def ask_question_in_thread(thread_id: str, question: str) -> str:
+    # 1. Add user message
     await openAIClient.beta.threads.messages.create(
         thread_id=thread_id,
         role="user",
-        content=[
-            {
-                "type": "text",
-                "text": question
-            }
-        ]
+        content=[{"type": "text", "text": question}]
     )
 
+    # 2. Start run
     run = await openAIClient.beta.threads.runs.create(
         thread_id=thread_id,
-        assistant_id=QA_ENGINE_ASSISTANT_ID
+        assistant_id=qa_engine_assistant_id
     )
 
+    # 3. Wait for run to complete
     while True:
         status = await openAIClient.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
         if status.status == "completed":
@@ -211,13 +203,16 @@ async def ask_question_in_thread(thread_id: str, question: str) -> str:
             raise HTTPException(status_code=500, detail=f"Run failed: {status.status}")
         await asyncio.sleep(1)
 
-    messages = await openAIClient.beta.threads.messages.list(thread_id=thread_id)
-    for message in reversed(messages.data):
-        if message.role == "assistant":
-            print("Assistant reply:", message.content[0].text.value)
+    # 4. Fetch only messages generated after this run
+    messages = await openAIClient.beta.threads.messages.list(thread_id=thread_id, limit=20)
+
+    # Find the latest assistant message associated with this run
+    for message in messages.data:
+        if message.run_id == run.id and message.role == "assistant":
+            print("Assistant reply:", message)
             return message.content[0].text.value
 
-    raise HTTPException(status_code=500, detail="No assistant reply found.")
+    raise HTTPException(status_code=500, detail="No new assistant reply found.")
 
 
 # Dashboard Assistant  
