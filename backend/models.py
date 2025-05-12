@@ -119,3 +119,9 @@ class AnalysisResult(BaseModel):
     cash_flow_stability: CashFlowStability
     loan_affordability_indicators: LoanAffordabilityIndicators
     risk_flags: RiskFlags
+
+class ChatResponse(BaseModel):
+    answer: str
+    
+class ChatRequest(BaseModel):
+    question: str

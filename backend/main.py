@@ -10,20 +10,21 @@ import logging
 import json
 from dotenv import load_dotenv
 from math import isclose
+from models import *
 from dateutil import parser
+
 from extract_thinker import Extractor, DocumentLoaderPdfPlumber
 from openai import AsyncOpenAI
-from models import *
 
 # --- Config & Setup ---
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
-
+QA_ENGINE_ASSISTANT_ID = os.getenv("Q_AND_A_ASSISTANT_ID_2")
+DASHBOARD_ASSISTANT_ID = os.getenv("DASHBOARD_ASSISTANT_ID")
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 openAIClient = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
-ASSISTANT_ID = os.getenv("ASSISTANT_ID")
 
 # --- FastAPI App ---
 app = FastAPI()
@@ -35,6 +36,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# FIX: This is a hack for MVP, should implement thread management to support multiple users and statements
+qa_engine_assistant_thread_id = None
+
 # -- API Routes --
 @app.get("/", response_model=dict)
 async def root() -> dict:
@@ -42,12 +46,14 @@ async def root() -> dict:
 
 @app.post("/finalize-statement/", response_model=AnalysisResult)
 async def finalize_statement(data: FinalizedStatementRequest) -> AnalysisResult:
+    global qa_engine_assistant_thread_id
     print("Finalized statement:", data)
 
-    res = await parse_with_assistant(data)
+    res = await generate_dashboard_with_assistant(data)
     print("Financial data", res)
-
-    return AnalysisResult(**json.loads(res))
+    result = AnalysisResult(**json.loads(res))
+    await start_conversation_with_statement(result)
+    return result
 
 @app.post("/upload-statement/", response_model=AnalysisResponse)
 async def upload_bank_statement(file: UploadFile = File(...)) -> Union[AnalysisResponse, JSONResponse]:
@@ -73,6 +79,14 @@ async def upload_bank_statement(file: UploadFile = File(...)) -> Union[AnalysisR
         logging.error("Error processing file: %s", e)
         raise HTTPException(status_code=500, detail=f"File parsing failed: {str(e)}")
 
+@app.post("/ask-question-in-thread/", response_model=ChatResponse)
+async def ask_question_in_thread(chat_request: ChatRequest) -> ChatResponse:
+    if qa_engine_assistant_thread_id is None:
+        raise HTTPException(status_code=400, detail="No thread ID provided")
+
+    res = await ask_question_in_thread(qa_engine_assistant_thread_id, chat_request.question)
+    print("Chat response:", res)
+    return ChatResponse(answer=res)
 
 # --- Core Logic Functions ---
 
@@ -126,7 +140,88 @@ async def extract(file_path: str) -> "BankStatement":
 
     return result
 
-async def parse_with_assistant(data: FinalizedStatementRequest) -> str:
+
+# -- Assistant Functions --
+
+# Bank QA Assistant starter conversation
+async def start_conversation_with_statement(data: AnalysisResult) -> str:
+    global qa_engine_assistant_thread_id
+    thread = await openAIClient.beta.threads.create()
+    
+    # Add bank statement to the thread
+    await openAIClient.beta.threads.messages.create(
+        thread_id=thread.id,
+        role="user",
+        content=[
+        {
+            "type": "text",
+            "text": json.dumps({ "user_bank_statement": data.model_dump() })
+        }
+    ])
+
+    # Start the assistant run
+    run = await openAIClient.beta.threads.runs.create(
+        thread_id=thread.id,
+        assistant_id=QA_ENGINE_ASSISTANT_ID
+    )
+
+    # Poll for completion
+    while True:
+        status = await openAIClient.beta.threads.runs.retrieve(thread_id=thread.id, run_id=run.id)
+        if status.status == "completed":
+            break
+        elif status.status in {"failed", "cancelled", "expired"}:
+            raise HTTPException(status_code=500, detail=f"Run failed: {status.status}")
+        await asyncio.sleep(1)
+
+    messages = await openAIClient.beta.threads.messages.list(thread_id=thread.id)
+    for message in reversed(messages.data):
+        if message.role == "assistant":
+            print("QA Assistant starter reply:", message.content[0].text.value)
+            message.content[0].text.value
+
+    print("QA Thread ID:", thread.id)
+    qa_engine_assistant_thread_id = thread.id
+    return thread.id
+
+
+# Bank QA Assistant chat
+async def ask_question_in_thread(thread_id: str, question: str) -> str:
+    await openAIClient.beta.threads.messages.create(
+        thread_id=thread_id,
+        role="user",
+        content=[
+            {
+                "type": "text",
+                "text": question
+            }
+        ]
+    )
+
+    run = await openAIClient.beta.threads.runs.create(
+        thread_id=thread_id,
+        assistant_id=QA_ENGINE_ASSISTANT_ID
+    )
+
+    while True:
+        status = await openAIClient.beta.threads.runs.retrieve(thread_id=thread_id, run_id=run.id)
+        if status.status == "completed":
+            break
+        elif status.status in {"failed", "cancelled", "expired"}:
+            raise HTTPException(status_code=500, detail=f"Run failed: {status.status}")
+        await asyncio.sleep(1)
+
+    messages = await openAIClient.beta.threads.messages.list(thread_id=thread_id)
+    for message in reversed(messages.data):
+        if message.role == "assistant":
+            print("Assistant reply:", message.content[0].text.value)
+            return message.content[0].text.value
+
+    raise HTTPException(status_code=500, detail="No assistant reply found.")
+
+
+# Dashboard Assistant  
+async def generate_dashboard_with_assistant(data: FinalizedStatementRequest) -> str:
     thread = await openAIClient.beta.threads.create()
     await openAIClient.beta.threads.messages.create(
         thread_id=thread.id,
@@ -135,7 +230,7 @@ async def parse_with_assistant(data: FinalizedStatementRequest) -> str:
     )
     run = await openAIClient.beta.threads.runs.create(
         thread_id=thread.id,
-        assistant_id=ASSISTANT_ID
+        assistant_id=DASHBOARD_ASSISTANT_ID
     )
 
     while True:

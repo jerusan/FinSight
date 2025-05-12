@@ -6,6 +6,7 @@ import { CashFlowStability } from './CashFlowStability';
 import { LoanAffordability } from './LoanAffordability';
 import { RiskFlags } from './RiskFlags';
 import { PieChartIcon } from 'lucide-react';
+import { ChatInterface } from './ChatInterface';
 
 interface FinancialData {
   income_analysis: {
@@ -103,6 +104,9 @@ const Dashboard = ({ financialData, currency }: DashboardProps) => {
         </div>
         <div>
           <RiskFlags data={financialData.risk_flags} />
+        </div>
+        <div>
+          <ChatInterface />
         </div>
       </div>
     </div>;
