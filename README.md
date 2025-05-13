@@ -2,6 +2,34 @@
 
 FinSight is an AI-powered financial insights platform that helps users analyze bank statements and assess financial health. It provides a modern dashboard for visualizing and understanding key financial metrics, making it especially useful for loan officers, financial advisors, and individuals seeking deeper insights into their finances.
 
+## MVP
+This project demonstrates a **loan approval support system**:
+
+### 1. 🏦 Bank Statement Upload  
+The underwriter uploads a bank statement in PDF format.
+
+### 2. 🔍 Transaction Parsing & Verification  
+The system parses the PDF and extracts transaction data.  
+The underwriter must review the entries and fix any errors, such as:
+- Mismatched balances  
+- Formatting issues  
+- Missing data
+- The left side shows parsed transactions, right side shows the original PDF.
+
+### 3. 📊 Financial Insights Dashboard  
+Once verified, the system generates a detailed financial overview, including:
+- Total income and monthly breakdown  
+- Spending categories and patterns  
+- Cash flow trends  
+- Risk flags and loan affordability metrics
+
+### 4. 🤖 Finance Assistant (Q&A Chat bot)  
+Users can interact with a built-in assistant to ask follow-up questions like:
+- “What are the recurring payments?”
+- “How much was spent on groceries last month?”
+
+
+This streamlines the underwriting process and helps assess financial health efficiently.
 ## Features
 - **Bank Statement Upload**: Upload PDF bank statements for instant analysis.
 - **Automated Data Extraction**: Parses transactions and account activity using AI and PDF extraction tools.
